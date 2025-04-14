@@ -36,9 +36,10 @@ func resourceTFETeamToken() *schema.Resource {
 			},
 
 			"force_regenerate": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				ForceNew: true,
+				Type:          schema.TypeBool,
+				Optional:      true,
+				ForceNew:      true,
+				ConflictsWith: []string{"description"},
 			},
 
 			"token": {
@@ -52,6 +53,13 @@ func resourceTFETeamToken() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 			},
+
+			"description": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				ForceNew:      true,
+				ConflictsWith: []string{"force_regenerate"},
+			},
 		},
 	}
 }
@@ -62,22 +70,34 @@ func resourceTFETeamTokenCreate(d *schema.ResourceData, meta interface{}) error 
 	// Get the team ID.
 	teamID := d.Get("team_id").(string)
 
-	log.Printf("[DEBUG] Check if a token already exists for team: %s", teamID)
-	_, err := config.Client.TeamTokens.Read(ctx, teamID)
-	if err != nil && !errors.Is(err, tfe.ErrResourceNotFound) {
-		return fmt.Errorf("error checking if a token exists for team %s: %w", teamID, err)
+	// Get the description if provided
+	var description string
+	desc, descriptionProvided := d.GetOk("description")
+	if descriptionProvided {
+		description = desc.(string)
 	}
 
-	// If error is nil, the token already exists.
-	if err == nil {
-		if !d.Get("force_regenerate").(bool) {
-			return fmt.Errorf("a token already exists for team: %s", teamID)
+	// Check if token already exists for legacy token creation requests
+	if !descriptionProvided || description == "" {
+		log.Printf("[DEBUG] Check if a token already exists for team: %s", teamID)
+		_, err := config.Client.TeamTokens.Read(ctx, teamID)
+		if err != nil && !errors.Is(err, tfe.ErrResourceNotFound) {
+			return fmt.Errorf("error checking if a token exists for team %s: %w", teamID, err)
 		}
-		log.Printf("[DEBUG] Regenerating existing token for team: %s", teamID)
+
+		// If error is nil, the token already exists.
+		if err == nil {
+			if !d.Get("force_regenerate").(bool) {
+				return fmt.Errorf("a token already exists for team: %s", teamID)
+			}
+			log.Printf("[DEBUG] Regenerating existing token for team: %s", teamID)
+		}
 	}
 
 	// Get the token create options.
-	options := tfe.TeamTokenCreateOptions{}
+	options := tfe.TeamTokenCreateOptions{
+		Description: description,
+	}
 
 	// Check whether the optional expiry was provided.
 	expiredAt, expiredAtProvided := d.GetOk("expired_at")
@@ -100,7 +120,11 @@ func resourceTFETeamTokenCreate(d *schema.ResourceData, meta interface{}) error 
 			"error creating new token for team %s: %w", teamID, err)
 	}
 
-	d.SetId(teamID)
+	if d.Get("description") != "" {
+		d.SetId(token.ID)
+	} else {
+		d.SetId(teamID)
+	}
 
 	// We need to set this here in the create function as this value will
 	// only be returned once during the creation of the token.
