@@ -28,9 +28,10 @@ type TeamTokenEphemeralResource struct {
 }
 
 type TeamTokenEphemeralResourceModel struct {
-	TeamID    types.String      `tfsdk:"team_id"`
-	Token     types.String      `tfsdk:"token"`
-	ExpiredAt timetypes.RFC3339 `tfsdk:"expired_at"`
+	TeamID      types.String      `tfsdk:"team_id"`
+	Token       types.String      `tfsdk:"token"`
+	ExpiredAt   timetypes.RFC3339 `tfsdk:"expired_at"`
+	Description string            `tfsdk:"description"`
 }
 
 func (e *TeamTokenEphemeralResource) Schema(ctx context.Context, req ephemeral.SchemaRequest, resp *ephemeral.SchemaResponse) {
@@ -51,6 +52,11 @@ func (e *TeamTokenEphemeralResource) Schema(ctx context.Context, req ephemeral.S
 				Optional:    true,
 				Computed:    true,
 				CustomType:  timetypes.RFC3339Type{},
+			},
+			"description": schema.StringAttribute{
+				Description: `The token's description.`,
+				Optional:    true,
+				Computed:    true,
 			},
 		},
 	}
@@ -89,7 +95,9 @@ func (e *TeamTokenEphemeralResource) Open(ctx context.Context, req ephemeral.Ope
 	}
 
 	// Create a new options struct
-	options := tfe.TeamTokenCreateOptions{}
+	options := tfe.TeamTokenCreateOptions{
+		Description: config.Description,
+	}
 
 	if !config.ExpiredAt.IsNull() {
 		expiredAt, diags := config.ExpiredAt.ValueRFC3339Time()
