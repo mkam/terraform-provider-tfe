@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	tfe "github.com/hashicorp/go-tfe"
@@ -137,7 +138,13 @@ func resourceTFETeamTokenRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(ConfiguredClient)
 
 	log.Printf("[DEBUG] Read the token from team: %s", d.Id())
-	_, err := config.Client.TeamTokens.Read(ctx, d.Id())
+
+	var err error
+	if isTokenID(d.Id()) {
+		_, err = config.Client.TeamTokens.ReadByID(ctx, d.Id())
+	} else {
+		_, err = config.Client.TeamTokens.Read(ctx, d.Id())
+	}
 	if err != nil {
 		if err == tfe.ErrResourceNotFound {
 			log.Printf("[DEBUG] Token for team %s no longer exists", d.Id())
@@ -154,7 +161,13 @@ func resourceTFETeamTokenDelete(d *schema.ResourceData, meta interface{}) error 
 	config := meta.(ConfiguredClient)
 
 	log.Printf("[DEBUG] Delete token from team: %s", d.Id())
-	err := config.Client.TeamTokens.Delete(ctx, d.Id())
+
+	var err error
+	if isTokenID(d.Id()) {
+		err = config.Client.TeamTokens.DeleteByID(ctx, d.Id())
+	} else {
+		err = config.Client.TeamTokens.Delete(ctx, d.Id())
+	}
 	if err != nil {
 		if err == tfe.ErrResourceNotFound {
 			return nil
@@ -166,8 +179,16 @@ func resourceTFETeamTokenDelete(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourceTFETeamTokenImporter(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	// Set the team ID field.
-	d.Set("team_id", d.Id())
+	if !isTokenID(d.Id()) {
+		// Set the team ID field.
+		d.Set("team_id", d.Id())
+	}
 
 	return []*schema.ResourceData{d}, nil
+}
+
+// Determines whether the ID of the resource is the ID of the authentication token
+// or the ID of the team the token belongs to.
+func isTokenID(id string) bool {
+	return strings.HasPrefix(id, "at-")
 }
