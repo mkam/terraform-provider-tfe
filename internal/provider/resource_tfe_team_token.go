@@ -179,7 +179,22 @@ func resourceTFETeamTokenDelete(d *schema.ResourceData, meta interface{}) error 
 }
 
 func resourceTFETeamTokenImporter(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	if !isTokenID(d.Id()) {
+	if isTokenID(d.Id()) {
+		// Fetch token by ID to set attributes.
+		config := meta.(ConfiguredClient)
+		token, err := config.Client.TeamTokens.ReadByID(ctx, d.Id())
+		if err != nil {
+			return nil, fmt.Errorf("error retrieving team token %s: %w", d.Id(), err)
+		}
+		d.Set("description", token.Description)
+		if !token.ExpiredAt.IsZero() {
+			d.Set("expired_at", token.ExpiredAt.Format(time.RFC3339))
+		}
+		if token.Team == nil {
+			return nil, fmt.Errorf("error determining team ID for token %s", d.Id())
+		}
+		d.Set("team_id", token.Team.ID)
+	} else {
 		// Set the team ID field.
 		d.Set("team_id", d.Id())
 	}
